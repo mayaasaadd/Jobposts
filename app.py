@@ -13,7 +13,7 @@ st.set_page_config(
 )
 
 # --- Hugging Face API Key ---
-HF_API_KEY = st.secrets.get("HF_API_KEY", "<YOUR_HF_TOKEN_HERE>")  # replace with your token if not using Streamlit secrets
+HF_API_KEY = st.secrets.get("HF_API_KEY", "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")  # replace with your token if not using Streamlit secrets
 
 # --- Custom CSS for Branding ---
 st.markdown("""
