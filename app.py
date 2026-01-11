@@ -5,6 +5,9 @@ from io import BytesIO
 from docx.shared import Pt, RGBColor
 import requests
 
+HF_API_KEY = st.secrets["HF_API_KEY"]
+
+
 # --- Page Config ---
 st.set_page_config(
     page_title="Job Description → Job Post Generator",
@@ -13,7 +16,7 @@ st.set_page_config(
 )
 
 # --- Hugging Face API Key ---
-HF_API_KEY = st.secrets.get("HF_API_KEY", "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")  # replace with your token if not using Streamlit secrets
+HF_API_KEY = st.secrets.get("HF_API_KEY", "")  # replace with your token if not using Streamlit secrets
 
 # --- Custom CSS for Branding ---
 st.markdown("""
@@ -144,19 +147,27 @@ uploaded_files = st.file_uploader("", type=["pdf", "docx"], accept_multiple_file
 def get_ai_response(prompt, model_name=model_name):
     API_URL = f"https://api-inference.huggingface.co/models/{model_name}"
     headers = {"Authorization": f"Bearer {HF_API_KEY}"}
-    payload = {"inputs": prompt, "parameters": {"max_new_tokens": 300}}
+    payload = {"inputs": prompt, "parameters": {"max_new_tokens": 400}}
+
     try:
         response = requests.post(API_URL, json=payload, headers=headers, timeout=60)
         response.raise_for_status()
         data = response.json()
-        if isinstance(data, list) and "generated_text" in data[0]:
+        
+        # Handle list response
+        if isinstance(data, list) and len(data) > 0 and "generated_text" in data[0]:
             return data[0]["generated_text"]
+        # Handle error message
         elif isinstance(data, dict) and "error" in data:
             return f"⚠️ API Error: {data['error']}"
         else:
             return str(data)
+        
+    except requests.exceptions.Timeout:
+        return "⚠️ Request timed out. Try reducing max_new_tokens or use a smaller model."
     except Exception as e:
         return f"⚠️ Failed to get response: {str(e)}"
+
 
 # --- Generate Job Posts ---
 if st.button("Generate Job Posts"):
