@@ -1,0 +1,15 @@
+# Core
+streamlit==1.50.0
+python-docx==1.2.0
+pdfplumber==0.11.8
+ollama==0.6.1
+
+# LangChain
+langchain==0.3.27
+langchain-community==0.3.31
+
+# Utilities
+pandas==2.3.3
+numpy==2.0.2
+requests==2.32.5
+rich==14.2.0
