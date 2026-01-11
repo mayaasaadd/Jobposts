@@ -5,18 +5,12 @@ from io import BytesIO
 from docx.shared import Pt, RGBColor
 import requests
 
-HF_API_KEY = st.secrets["HF_API_KEY"]
-
-
 # --- Page Config ---
 st.set_page_config(
     page_title="Job Description → Job Post Generator",
     layout="centered",
     page_icon="📄"
 )
-
-# --- Hugging Face API Key ---
-HF_API_KEY = st.secrets.get("HF_API_KEY", "")  # replace with your token if not using Streamlit secrets
 
 # --- Custom CSS for Branding ---
 st.markdown("""
@@ -96,9 +90,7 @@ def format_bullets(text):
     lines = []
     for line in text.split("\n"):
         line = line.strip()
-        if not line:
-            continue
-        if "Here is the rewritten job post" in line or line == "•":
+        if not line or "Here is the rewritten job post" in line or line == "•":
             continue
         line = line.replace("**", "").replace("*", "").strip()
         if line.startswith(("•", "-")):
@@ -133,7 +125,7 @@ def create_docx(content, default_title):
 with st.sidebar:
     st.image("Unknown.png", width=300)
     st.title(" ⚙ Settings")
-    model_name = st.selectbox("Select LLM Model", ["tiiuae/falcon-7b-instruct", "google/flan-t5-xl", "declare-lab/flan-alpaca-large"], index=0)
+    model_name = st.selectbox("Select LLM Model", ["google/flan-t5-small"], index=0)
     temp = st.slider("Creativity (Temperature)", 0.0, 1.0, 0.7)
     if st.button(" 🗑 Clear All Drafts", use_container_width=True):
         st.session_state.editable_posts = []
@@ -143,31 +135,22 @@ with st.sidebar:
 # --- File Upload Section ---
 uploaded_files = st.file_uploader("", type=["pdf", "docx"], accept_multiple_files=True)
 
-# --- Hugging Face AI Function ---
+# --- Hugging Face Public API (No Key Needed) ---
 def get_ai_response(prompt, model_name=model_name):
     API_URL = f"https://api-inference.huggingface.co/models/{model_name}"
-    headers = {"Authorization": f"Bearer {HF_API_KEY}"}
-    payload = {"inputs": prompt, "parameters": {"max_new_tokens": 400}}
-
+    payload = {"inputs": prompt, "parameters": {"max_new_tokens": 300}}
     try:
-        response = requests.post(API_URL, json=payload, headers=headers, timeout=60)
+        response = requests.post(API_URL, json=payload, timeout=60)
         response.raise_for_status()
         data = response.json()
-        
-        # Handle list response
-        if isinstance(data, list) and len(data) > 0 and "generated_text" in data[0]:
+        if isinstance(data, list) and "generated_text" in data[0]:
             return data[0]["generated_text"]
-        # Handle error message
         elif isinstance(data, dict) and "error" in data:
             return f"⚠️ API Error: {data['error']}"
         else:
             return str(data)
-        
-    except requests.exceptions.Timeout:
-        return "⚠️ Request timed out. Try reducing max_new_tokens or use a smaller model."
     except Exception as e:
         return f"⚠️ Failed to get response: {str(e)}"
-
 
 # --- Generate Job Posts ---
 if st.button("Generate Job Posts"):
@@ -213,7 +196,6 @@ if st.button("Generate Job Posts"):
 
         st.success(f"Generated {len(st.session_state.editable_posts)} draft job post(s). Edit and download below.")
 
-
 # --- Search / Filter ---
 if st.session_state.get("editable_posts"):
     st.subheader(" 🔍 Search / Filter Job Posts")
@@ -231,7 +213,6 @@ if st.session_state.get("editable_posts"):
     if not filtered_posts:
         st.info("No job posts match the search filter.")
 
-
 # --- Edit & Download Individual Posts ---
 if st.session_state.get("editable_posts") and filtered_posts:
     st.header(" ✏ Edit & Download Individual Job Posts")
@@ -240,14 +221,11 @@ if st.session_state.get("editable_posts") and filtered_posts:
             final_text = st.text_area(
                 f"Edit Job Post {idx+1}", value=st.session_state.get(f"final_{idx+1}", post["content"]),
                 height=300, key=f"final_{post['filename']}"
-
             )
-            # Preview container
             st.markdown(
                 f'<div class="job-preview" style="background-color:#f7f7f7; padding:20px; border-radius:10px; border:1px solid #ddd; white-space:pre-wrap; margin-top:10px;">{final_text}</div>',
                 unsafe_allow_html=True
             )
-            # Individual download button (dark blue)
             buffer = create_docx(final_text, f"Job Post {idx+1} — {post['filename']}")
             st.download_button(
                 label=f"Download Job Post {idx+1} (DOCX)",
@@ -255,68 +233,43 @@ if st.session_state.get("editable_posts") and filtered_posts:
                 file_name=f"{post['filename'].replace('.','_')}_JobPost.docx",
                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                 key=f"download_{idx}",
-                help="Download this job post",
                 use_container_width=True
             )
-
 
 # --- Batch Download ---
 if st.button("Download All Drafts (DOCX)"):
     master_doc = Document()
-
-    # --- Header for Master Document ---
     header_title = master_doc.add_paragraph("LinkedIn Job Posts Generator")
     run = header_title.runs[0]
     run.bold = True
     run.font.size = Pt(24)
-    header_title.alignment = 1  # center
-
+    header_title.alignment = 1
     header_subtitle = master_doc.add_paragraph("El Ahlyia Healthcare — Generated Job Posts")
     run = header_subtitle.runs[0]
     run.italic = True
-    run.font.color.rgb = RGBColor(0, 153, 255)  # Same Dark Blue
+    run.font.color.rgb = RGBColor(0, 153, 255)
     run.font.size = Pt(14)
-    header_subtitle.alignment = 1  # center
+    header_subtitle.alignment = 1
+    master_doc.add_paragraph("")
 
-    master_doc.add_paragraph("")  # small spacing after header
-
-    # Loop through all posts
     for idx, post in enumerate(st.session_state.editable_posts, start=1):
         final_text = st.session_state.get(f"final_{idx}", post["content"])
-
-        # Add heading for each job post
         job_post_title = f"Job Post {idx} — {post['filename']}"
         master_doc.add_heading(job_post_title, level=1)
-
-        # Split content into lines
-        lines = final_text.split("\n")
-        lines = [line.strip() for line in lines if line.strip()]
-
-        # Add each line with formatting
+        lines = [line.strip() for line in final_text.split("\n") if line.strip()]
         for line in lines:
-            # Section headings
-            if any(line.startswith(section) for section in [
-                "Company Description", "Role Description", "Qualifications",
-                "Job Requirements", "Reasons to Join"
-            ]):
+            if any(line.startswith(section) for section in ["Company Description","Role Description","Qualifications","Job Requirements","Reasons to Join"]):
                 p = master_doc.add_paragraph()
                 p.add_run(line).bold = True
-
-            # Bullet points
             elif line.startswith(("-", "•")):
                 master_doc.add_paragraph(line.lstrip("-• ").strip(), style="List Bullet")
-
-            # Regular paragraph
             else:
                 master_doc.add_paragraph(line)
+        master_doc.add_paragraph("")
 
-        master_doc.add_paragraph("")  # spacing between posts
-
-    # Save to BytesIO
     buffer = BytesIO()
     master_doc.save(buffer)
     buffer.seek(0)
-
     st.download_button(
         label="Download All Job Posts (DOCX)",
         data=buffer,
@@ -324,6 +277,3 @@ if st.button("Download All Drafts (DOCX)"):
         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         use_container_width=True
     )
-
-
-
