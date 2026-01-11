@@ -1,14 +1,9 @@
 import streamlit as st
-from langchain_community.chat_models import ChatOllama
-from langchain.prompts import PromptTemplate
 import pdfplumber
 from docx import Document
 from io import BytesIO
-from docx.shared import Pt
-from docx.shared import RGBColor
-
-
-
+from docx.shared import Pt, RGBColor
+import requests
 
 # --- Page Config ---
 st.set_page_config(
@@ -17,90 +12,33 @@ st.set_page_config(
     page_icon="📄"
 )
 
+# --- Hugging Face API Key ---
+HF_API_KEY = st.secrets.get("HF_API_KEY", "<YOUR_HF_TOKEN_HERE>")  # replace with your token if not using Streamlit secrets
+
 # --- Custom CSS for Branding ---
 st.markdown("""
 <style>
 /* Main page buttons - Ahlyia red */
-.stButton>button {
-    background-color: #C8102E;  
-    color: white;
-    font-weight: 600;
-    border-radius: 6px;
-    padding: 0.5rem 1rem;
-    font-size: 1rem;
-}
-
-/* Hover effect */
-.stButton>button:hover {
-    background-color: #E03C4E; 
-}
-
+.stButton>button { background-color: #C8102E; color: white; font-weight: 600; border-radius: 6px; padding: 0.5rem 1rem; font-size: 1rem; }
+.stButton>button:hover { background-color: #E03C4E; }
 /* File uploader browse button */
-.css-1aumxhk button {
-    background-color: #C8102E !important;
-    color: white !important;
-    font-weight: 600 !important;
-    border-radius: 6px !important;
-}
-.css-1aumxhk button:hover {
-    background-color: #E03C4E !important;
-}
-
+.css-1aumxhk button { background-color: #C8102E !important; color: white !important; font-weight: 600 !important; border-radius: 6px !important; }
+.css-1aumxhk button:hover { background-color: #E03C4E !important; }
 /* Sidebar background and buttons */
-[data-testid="stSidebar"] {
-    background-color: #003366;
-    color: white;
-}
-[data-testid="stSidebar"] h1,
-[data-testid="stSidebar"] h2,
-[data-testid="stSidebar"] h3,
-[data-testid="stSidebar"] p,
-[data-testid="stSidebar"] span,
-[data-testid="stSidebar"] label {
-    color: white;
-}
-[data-testid="stSidebar"] button {
-    background-color: #C8102E;
-    color: white;
-    font-weight: 600;
-    border-radius: 6px;
-}
-[data-testid="stSidebar"] button:hover {
-    background-color: #E03C4E;
-}
-
+[data-testid="stSidebar"] { background-color: #003366; color: white; }
+[data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3, [data-testid="stSidebar"] p, [data-testid="stSidebar"] span, [data-testid="stSidebar"] label { color: white; }
+[data-testid="stSidebar"] button { background-color: #C8102E; color: white; font-weight: 600; border-radius: 6px; }
+[data-testid="stSidebar"] button:hover { background-color: #E03C4E; }
 /* Preview containers and text areas */
-.job-preview, .stTextArea>div>div>textarea {
-    color: #111111 !important;
-}
-.css-1cpxqw2 input {
-    color: #111111 !important;
-}
-.css-1cpxqw2 input::placeholder {
-    color: #555555 !important;
-}
-
+.job-preview, .stTextArea>div>div>textarea { color: #111111 !important; }
+.css-1cpxqw2 input { color: #111111 !important; }
+.css-1cpxqw2 input::placeholder { color: #555555 !important; }
 /* Individual job post buttons (dark blue) */
-.individual-download button {
-    background-color: #003366 !important;
-    color: white !important;
-    font-weight: 600 !important;
-    border-radius: 6px !important;
-}
-.individual-download button:hover {
-    background-color: #0056A0 !important;
-}
-
-            
+.individual-download button { background-color: #003366 !important; color: white !important; font-weight: 600 !important; border-radius: 6px !important; }
+.individual-download button:hover { background-color: #0056A0 !important; }
 /* Sidebar slider - red theme */
-[data-testid="stSidebar"] .stSlider {
-    accent-color: #C8102E;  /* Modern browsers respect this for track & knob */
-}
-
-
-
+[data-testid="stSidebar"] .stSlider { accent-color: #C8102E; }
 </style>
-            
 """, unsafe_allow_html=True)
 
 # --- Centered Logo ---
@@ -111,40 +49,20 @@ st.markdown("<br>", unsafe_allow_html=True)
 
 # --- Main Banner ---
 st.markdown("""
-<div style="
-    background-color: #003366;
-    padding: 30px 25px;
-    border-radius: 12px;
-    box-shadow: 0 6px 10px rgba(0,0,0,0.15);
-    text-align: center;
-    color: white;
-    margin-bottom: 25px;
-    position: relative;
-">
+<div style="background-color: #003366; padding: 30px 25px; border-radius: 12px; box-shadow: 0 6px 10px rgba(0,0,0,0.15); text-align: center; color: white; margin-bottom: 25px; position: relative;">
     <h1 style="margin:0; font-size:2rem; font-weight:700;"> Job Post Generator</h1>
-    <div style="
-        width: 80px;
-        height: 4px;
-        background-color: #C8102E;
-        margin: 10px auto 0;
-        border-radius: 2px;
-    "></div>
-            <h2 style="margin:0; font-size:1.5rem;">📂 Upload Job Descriptions</h2>
-    <p style="margin:5px 0 15px; font-size:1rem;">
-        Upload your PDF or DOCX Job Descriptions. The system will generate professional LinkedIn-ready job posts for El Ahlyia Healthcare.
-    </p>
-            
+    <div style="width: 80px; height: 4px; background-color: #C8102E; margin: 10px auto 0; border-radius: 2px;"></div>
+    <h2 style="margin:0; font-size:1.5rem;">📂 Upload Job Descriptions</h2>
+    <p style="margin:5px 0 15px; font-size:1rem;">Upload your PDF or DOCX Job Descriptions. The system will generate professional LinkedIn-ready job posts for El Ahlyia Healthcare.</p>
 </div>
 """, unsafe_allow_html=True)
 
-
 # --- Session State ---
 if "editable_posts" not in st.session_state:
-    st.session_state.editable_posts = []  # Initialize the list to avoid errors
+    st.session_state.editable_posts = []
 existing_files = {p["filename"] for p in st.session_state.editable_posts}
 if "search_filter" not in st.session_state:
     st.session_state.search_filter = ""
-
 
 # --- Company Description ---
 COMPANY_DESCRIPTION = (
@@ -153,7 +71,6 @@ COMPANY_DESCRIPTION = (
     "with advanced medical technologies since 1995. We are dedicated to improving healthcare outcomes "
     "and are recognized for delivering reliable and innovative medical solutions."
 )
-
 
 # --- Helper Functions ---
 def extract_text(uploaded_file):
@@ -173,23 +90,14 @@ def extract_text(uploaded_file):
     return jd_text.strip()
 
 def format_bullets(text):
-    """
-    Clean and format bullets from LLM output:
-    - Removes intro lines like "Here is the rewritten job post"
-    - Removes extra markdown (** or *)
-    - Converts lines starting with • or - into uniform format
-    """
     lines = []
     for line in text.split("\n"):
         line = line.strip()
         if not line:
             continue
-        # Remove LLM intro
         if "Here is the rewritten job post" in line or line == "•":
             continue
-        # Remove markdown symbols
         line = line.replace("**", "").replace("*", "").strip()
-        # Convert bullets to -
         if line.startswith(("•", "-")):
             line = line.lstrip("•- ").strip()
             lines.append(f"- {line}")
@@ -197,180 +105,99 @@ def format_bullets(text):
             lines.append(line)
     return "\n".join(lines)
 
-
 def create_docx(content, default_title):
-    from docx import Document
-    from io import BytesIO
-
     doc = Document()
-
-    # Split content into lines
-    lines = content.split("\n")
-
-    # --- CLEAN LINES ---
-    cleaned_lines = []
-    for line in lines:
-        line = line.strip()
-        if not line:
-            continue
-        # Remove LLM intro and stray bullets
-        if "Here's the rewritten job post" in line or line == "•":
-            continue
-        # Remove markdown symbols
-        line = line.replace("**", "").replace("*", "").strip()
-        cleaned_lines.append(line)
-    
-    lines = cleaned_lines
-
-    # --- EXTRACT JOB TITLE ---
+    lines = [line.strip() for line in content.split("\n") if line.strip()]
     job_title = default_title
-    if lines and not any(lines[0].startswith(section) for section in [
-        "Company Description", "Role Description", "Qualifications",
-        "Job Requirements", "Reasons to Join"
-    ]):
+    if lines and not any(lines[0].startswith(section) for section in ["Company Description","Role Description","Qualifications","Job Requirements","Reasons to Join"]):
         job_title = lines[0]
         lines = lines[1:]
-
-    # Add job title as main heading
     doc.add_heading(job_title, level=1)
-
-    # --- ADD REST OF CONTENT ---
     for line in lines:
-        line = line.strip()
-        if not line:
-            continue
-
-        # Section headings
-        if any(line.startswith(section) for section in [
-            "Company Description", "Role Description", "Qualifications",
-            "Job Requirements", "Reasons to Join"
-        ]):
+        if any(line.startswith(section) for section in ["Company Description","Role Description","Qualifications","Job Requirements","Reasons to Join"]):
             p = doc.add_paragraph()
             p.add_run(line).bold = True
-
-        # Bullet points starting with - or •
-        elif line.startswith(("•", "-")):
-            doc.add_paragraph(line[1:].strip(), style="List Bullet")
-
-        # Lines in "Reasons to Join" or other items without bullets
-        elif any(keyword in line for keyword in [
-            "Be part of", "Work on", "Collaborate", "Enjoy", "Contribute"
-        ]):
-            doc.add_paragraph(line, style="List Bullet")
-
-        # Normal paragraph
+        elif line.startswith(("-", "•")):
+            doc.add_paragraph(line.lstrip("-• ").strip(), style="List Bullet")
         else:
             doc.add_paragraph(line)
-
-    # Save to BytesIO
     buffer = BytesIO()
     doc.save(buffer)
     buffer.seek(0)
     return buffer
 
-
-
-
-
-
-
 # --- Sidebar ---
-
 with st.sidebar:
     st.image("Unknown.png", width=300)
     st.title(" ⚙ Settings")
-    model_name = st.selectbox("Select LLM Model", ["llama3:latest"], index=0)
+    model_name = st.selectbox("Select LLM Model", ["tiiuae/falcon-7b-instruct", "google/flan-t5-xl", "declare-lab/flan-alpaca-large"], index=0)
     temp = st.slider("Creativity (Temperature)", 0.0, 1.0, 0.7)
     if st.button(" 🗑 Clear All Drafts", use_container_width=True):
         st.session_state.editable_posts = []
         st.session_state.search_filter = ""
         st.rerun()
 
-
-
 # --- File Upload Section ---
-uploaded_files = st.file_uploader(
-    "", type=["pdf", "docx"], accept_multiple_files=True
-)
+uploaded_files = st.file_uploader("", type=["pdf", "docx"], accept_multiple_files=True)
 
+# --- Hugging Face AI Function ---
+def get_ai_response(prompt, model_name=model_name):
+    API_URL = f"https://api-inference.huggingface.co/models/{model_name}"
+    headers = {"Authorization": f"Bearer {HF_API_KEY}"}
+    payload = {"inputs": prompt, "parameters": {"max_new_tokens": 300}}
+    try:
+        response = requests.post(API_URL, json=payload, headers=headers, timeout=60)
+        response.raise_for_status()
+        data = response.json()
+        if isinstance(data, list) and "generated_text" in data[0]:
+            return data[0]["generated_text"]
+        elif isinstance(data, dict) and "error" in data:
+            return f"⚠️ API Error: {data['error']}"
+        else:
+            return str(data)
+    except Exception as e:
+        return f"⚠️ Failed to get response: {str(e)}"
 
 # --- Generate Job Posts ---
 if st.button("Generate Job Posts"):
     if not uploaded_files:
         st.warning("Please upload at least one Job Description file to generate drafts.")
     else:
-        chat = ChatOllama(model=model_name, temperature=temp, base_url="https://api.ollama.com")
-        prompt_template = PromptTemplate(
-            input_variables=["jd_text"],
-            template=(
-                "You are an HR Talent Acquisition professional.\n"
-                "Rewrite the following Job Description into a concise, professional LinkedIn-style job post.\n"
-                "Use hyphens '-' for bullet points.\n"
-                "Maintain the following sections:Job Title, Role Description, Qualifications, Job Requirements, Reasons to Join El Ahlyia.\n"
-                "Make Sure Bullet Points are Found in Qualifications and Job Requirements"
-                "Job Description Content:\n{jd_text}"
-            ),
-        )
-
         existing_files = {p["filename"] for p in st.session_state.editable_posts}
-
-        # Containers for progress
         progress_container = st.container()
         overall_progress = st.progress(0)
 
         for idx, uploaded_file in enumerate(uploaded_files, start=1):
             if uploaded_file.name in existing_files:
-              continue
+                continue
             with progress_container:
-                # Yellow bar - processing
-                st.markdown(
-                    f"""
-                    <div style="
-                        background-color: #FFF3CD;
-                        padding: 10px;
-                        border-radius: 5px;
-                        border: 1px solid #FFE69C;
-                        color: #856404;
-                        margin-bottom:5px;">
-                        Processing: {uploaded_file.name}
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
+                st.markdown(f'<div style="background-color: #FFF3CD; padding: 10px; border-radius: 5px; border: 1px solid #FFE69C; color: #856404; margin-bottom:5px;">Processing: {uploaded_file.name}</div>', unsafe_allow_html=True)
 
             jd_text = extract_text(uploaded_file)
             if not jd_text:
                 jd_text = "Job Description content could not be extracted from the file."
 
-            try:
-              raw_post = chat.predict(prompt_template.format(jd_text=jd_text))
-              job_post = format_bullets(raw_post)
-              final_post = f"{COMPANY_DESCRIPTION}\n\n{job_post}"
-            except Exception as e:
-             final_post = f"{COMPANY_DESCRIPTION}\n\n⚠️ Failed to generate job post: {str(e)}"
+            prompt_text = (
+                "You are an HR Talent Acquisition professional.\n"
+                "Rewrite the following Job Description into a concise, professional LinkedIn-style job post.\n"
+                "Use hyphens '-' for bullet points.\n"
+                "Maintain the following sections: Job Title, Role Description, Qualifications, Job Requirements, Reasons to Join El Ahlyia.\n"
+                f"Job Description Content:\n{jd_text}"
+            )
+
+            with st.spinner(f"Generating job post for {uploaded_file.name}..."):
+                raw_post = get_ai_response(prompt_text)
+                job_post = format_bullets(raw_post)
+                final_post = f"{COMPANY_DESCRIPTION}\n\n{job_post}"
 
             st.session_state.editable_posts.append({
-             "filename": uploaded_file.name,
-             "content": final_post
+                "filename": uploaded_file.name,
+                "content": final_post
             })
 
-
             with progress_container:
-                # Green bar - completed
-                st.markdown(
-                    f"""
-                    <div style="
-                        background-color: #D4EDDA;
-                        padding: 10px;
-                        border-radius: 5px;
-                        border: 1px solid #C3E6CB;
-                        color: #155724;
-                        margin-bottom:5px;">
-                        Completed: {uploaded_file.name}
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
+                st.markdown(f'<div style="background-color: #D4EDDA; padding: 10px; border-radius: 5px; border: 1px solid #C3E6CB; color: #155724; margin-bottom:5px;">Completed: {uploaded_file.name}</div>', unsafe_allow_html=True)
+
             overall_progress.progress(idx / len(uploaded_files))
 
         st.success(f"Generated {len(st.session_state.editable_posts)} draft job post(s). Edit and download below.")
