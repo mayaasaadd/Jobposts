@@ -299,7 +299,7 @@ if st.button("Generate Job Posts"):
     if not uploaded_files:
         st.warning("Please upload at least one Job Description file to generate drafts.")
     else:
-        chat = ChatOllama(model=model_name, temperature=temp)
+        chat = ChatOllama(model=model_name, temperature=temp, base_url="https://api.ollama.com")
         prompt_template = PromptTemplate(
             input_variables=["jd_text"],
             template=(
